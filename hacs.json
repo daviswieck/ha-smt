@@ -1,7 +1,7 @@
 {
-  "name": "SmartMeterTexas",
+  "name": "ha-smt",
   "render_readme": true,
-  "domain": "smt",
+  "domain": "ha_smt",
   "version": "1.0.0",
   "description": "Integration for SmartMeterTexas",
   "documentation": "https://www.smartmetertexas.com/",
