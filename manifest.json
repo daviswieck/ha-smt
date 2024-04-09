@@ -2,6 +2,7 @@
   "domain": "smt",
   "name": "SmartMeterTexas",
   "documentation": "https://www.smartmetertexas.com/",
+  "config_flow": true,
   "dependencies": [],
   "codeowners": [],
   "requirements": []
