@@ -1,9 +1,8 @@
 {
-  "domain": "smt",
-  "name": "SmartMeterTexas",
+  "domain": "ha_smt",
+  "name": "ha-smt",
   "documentation": "https://www.smartmetertexas.com/",
   "config_flow": true,
-  "dependencies": [],
-  "codeowners": [],
   "requirements": []
 }
+
