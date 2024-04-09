@@ -1,0 +1,9 @@
+{
+  "name": "SmartMeterTexas",
+  "render_readme": true,
+  "domain": "smt",
+  "version": "1.0.0",
+  "description": "Integration for SmartMeterTexas",
+  "documentation": "https://www.smartmetertexas.com/",
+  "requirements": []
+}
