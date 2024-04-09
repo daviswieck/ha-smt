@@ -1,59 +1,124 @@
-"""Integration with SmartMeterTexas."""
-import logging
+"""Platform for SmartMeterTexas."""
 import asyncio
+import logging
+import json
+import http.client
 
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
+from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, CONF_ESIID, CONF_METER_NUMBER
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import voluptuous as vol
 
-_LOGGER = logging.getLogger(__name__)
+DOMAIN = "ha_smt"
 
-DOMAIN = "smt"
-
-CONFIG_SCHEMA = vol.Schema({DOMAIN: vol.Schema({})}, extra=vol.ALLOW_EXTRA)
+# Config schema for configuration flow
+CONFIG_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
+        vol.Required(CONF_ESIID): str,
+        vol.Required(CONF_METER_NUMBER): str,
+    }
+)
 
 async def async_setup(hass, config):
-    """Set up the SmartMeterTexas component."""
+    """Set up the ha_smt component."""
     return True
 
-async def async_request_meter_reading(hass, meter_data):
-    """Request meter reading from SmartMeterTexas."""
-    session = async_get_clientsession(hass)
+async def async_setup_entry(hass, config_entry):
+    """Set up ha_smt from a config entry."""
+    username = config_entry.data[CONF_USERNAME]
+    password = config_entry.data[CONF_PASSWORD]
+    esiid = config_entry.data[CONF_ESIID]
+    meter_number = config_entry.data[CONF_METER_NUMBER]
+
+    # Your setup code here to authenticate and retrieve data
+    await authenticate_and_retrieve_data(hass, username, password, esiid, meter_number)
+
+    return True
+
+async def async_unload_entry(hass, config_entry):
+    """Unload a config entry."""
+    # Perform cleanup tasks when a config entry is unloaded
+    return True
+
+async def authenticate_and_retrieve_data(hass, username, password, esiid, meter_number):
+    """Authenticate and retrieve data from SmartMeterTexas."""
+    # Define connection and headers
+    conn = http.client.HTTPSConnection("www.smartmetertexas.com")
     headers = {
         "accept": "application/json, text/plain, */*",
+        "accept-language": "en-US,en;q=0.9",
+        "cache-control": "no-cache",
         "content-type": "application/json",
-        "user-agent": "YOUR_USER_AGENT_STRING",
+        "origin": "https://www.smartmetertexas.com",
+        "pragma": "no-cache",
+        "referer": "https://www.smartmetertexas.com/home",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     }
-    url = "https://www.smartmetertexas.com/api/ondemandread"
+
+    auth_data = {
+        "username": username,
+        "password": password,
+        "rememberMe": "true",
+    }
+
+    meter_data = {
+        "ESIID": esiid,
+        "MeterNumber": meter_number,
+    }
+
     try:
-        response = await session.post(url, json=meter_data, headers=headers)
-        response_data = await response.json()
-        return response_data
+        # Step 1: Attempt to authenticate and retrieve bearer token for session
+        conn.request("POST", "/commonapi/user/authenticate", json.dumps(auth_data), headers)
+        response = conn.getresponse()
+
+        if response.status != 200:
+            raise Exception(f"Authentication failed with status code: {response.status}")
+
+        auth_result = json.loads(response.read().decode())
+
+        if "token" not in auth_result:
+            raise Exception("No token returned in authorization request")
+
+        token = auth_result["token"]
+        headers["authorization"] = f"Bearer {token}"
+
+        # Step 2: Request on-demand read of meter
+        conn.request("POST", "/api/ondemandread", json.dumps(meter_data), headers)
+        odr_response = conn.getresponse()
+
+        if odr_response.status != 200:
+            raise Exception(f"Failed to request on-demand read with status code: {odr_response.status}")
+
+        odr_result = json.loads(odr_response.read().decode())["data"]
+
+        if odr_result["statusCode"] == "5031":
+            # Too many attempted reads in 1 hour, log and move on
+            logging.warning(odr_result["statusReason"])
+        elif odr_result["statusCode"] != "0":
+            raise Exception(f"Error requesting on-demand read: {odr_result['statusReason']}")
+
+        # Step 3: Poll the latest on-demand read endpoint until a valid reading is returned
+        odr_status = "NOT_RECEIVED"
+        while odr_status != "COMPLETED":
+            await asyncio.sleep(30)
+
+            conn.request("POST", "/api/usage/latestodrread", json.dumps(meter_data), headers)
+            fetch_odr_response = conn.getresponse()
+
+            if fetch_odr_response.status != 200:
+                raise Exception(f"Failed to fetch on-demand read with status code: {fetch_odr_response.status}")
+
+            fetch_odr_result = json.loads(fetch_odr_response.read().decode())["data"]
+            odr_status = fetch_odr_result["odrstatus"]
+
+            if odr_status == "COMPLETED":
+                odr_reading = fetch_odr_result["odrread"]
+                logging.info(f"Received on-demand reading: {odr_reading}")
+            elif odr_status != "PENDING":
+                raise Exception("Could not retrieve the meter reading")
+
     except Exception as e:
-        _LOGGER.error(f"Error requesting meter reading: {e}")
-        return None
-
-async def async_handle_meter_reading(hass, meter_data):
-    """Handle the meter reading."""
-    response_data = await async_request_meter_reading(hass, meter_data)
-    if response_data and "data" in response_data and "odrstatus" in response_data["data"]:
-        odr_status = response_data["data"]["odrstatus"]
-        if odr_status == "COMPLETED":
-            odr_reading = response_data["data"]["odrread"]
-            _LOGGER.info(f"Received meter reading: {odr_reading}")
-            # You can further process or use the meter reading here
-        else:
-            _LOGGER.warning(f"Meter reading status is not COMPLETED: {odr_status}")
-    else:
-        _LOGGER.error("Invalid response received for meter reading request")
-
-async def async_service_handler(call):
-    """Handle service calls."""
-    meter_data = call.data.get("meter_data")
-    if meter_data:
-        await async_handle_meter_reading(call.data["meter_data"])
-
-async def async_setup(hass, config):
-    """Set up the SmartMeterTexas component."""
-    hass.services.async_register(DOMAIN, "request_meter_reading", async_service_handler)
-    return True
+        logging.error(f"Error during data retrieval: {e}")
+    finally:
+        conn.close()
