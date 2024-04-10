@@ -1,1 +1,1 @@
-DOMAIN = "smart_meter_texas"
+DOMAIN = "ha_smt"
