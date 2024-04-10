@@ -1,6 +1,6 @@
 {
-  "domain": "ha_smt",
-  "name": "Smart Meter Texas",
+  "domain": "smt",
+  "name": "HA-SMT",
   "documentation": "https://github.com/yourusername/ha_smt",
   "dependencies": [],
   "codeowners": ["yourusername"],
@@ -8,4 +8,3 @@
   "homeassistant": "0.110",
   "config_flow": true
 }
-
