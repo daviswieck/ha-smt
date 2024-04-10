@@ -1,7 +1,7 @@
 import voluptuous as vol
 from homeassistant import config_entries
 
-DOMAIN = "smt"
+DOMAIN = "ha_smt"
 
 class HaSmtConfigFlow(config_entries.ConfigFlow):
   """Config flow for HA-SMT."""
